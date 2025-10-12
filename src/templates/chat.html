@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRON Reasoning Agent</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Orbitron', monospace;
+            background: #000000;
+            color: #ff0000;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        #root { height: 100vh; display: flex; flex-direction: column; }
+        
+        .tron-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                linear-gradient(0deg, transparent 24%, rgba(255, 0, 0, 0.05) 25%, rgba(255, 0, 0, 0.05) 26%, transparent 27%, transparent 74%, rgba(255, 0, 0, 0.05) 75%, rgba(255, 0, 0, 0.05) 76%, transparent 77%, transparent),
+                linear-gradient(90deg, transparent 24%, rgba(255, 0, 0, 0.05) 25%, rgba(255, 0, 0, 0.05) 26%, transparent 27%, transparent 74%, rgba(255, 0, 0, 0.05) 75%, rgba(255, 0, 0, 0.05) 76%, transparent 77%, transparent);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .header {
+            background: linear-gradient(180deg, #1a0000 0%, #000000 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 2px solid #ff0000;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+            position: relative;
+            z-index: 10;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 900;
+            color: #ff0000;
+            text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000;
+            letter-spacing: 3px;
+        }
+        
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .chat-container::-webkit-scrollbar { width: 8px; }
+        .chat-container::-webkit-scrollbar-track { background: #000; }
+        .chat-container::-webkit-scrollbar-thumb { background: #ff0000; border-radius: 4px; }
+        
+        .message {
+            max-width: 70%;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1rem;
+            border-radius: 0;
+            animation: slideIn 0.3s ease-out;
+            position: relative;
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .user {
+            background: linear-gradient(135deg, #330000 0%, #1a0000 100%);
+            border: 2px solid #ff0000;
+            color: #ff0000;
+            margin-left: auto;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.3);
+        }
+        
+        .agent {
+            background: linear-gradient(135deg, #0a0a0a 0%, #000000 100%);
+            border: 2px solid #ff0000;
+            color: #ff6666;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.2);
+        }
+        
+        .debug {
+            font-size: 0.7rem;
+            color: #ff3333;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #ff0000;
+            font-family: 'Courier New', monospace;
+            opacity: 0.8;
+        }
+        
+        .logs {
+            background: #000000;
+            border: 1px solid #ff0000;
+            padding: 1rem;
+            margin-top: 0.75rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.7rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .logs div { padding: 0.25rem 0; }
+        .log-input { color: #ff0000; }
+        .log-sentiment { color: #ff3333; }
+        .log-decision { color: #ff6666; }
+        .log-prompt { color: #ff4444; }
+        .log-llm { color: #ff5555; }
+        .log-parse { color: #ff7777; }
+        .log-tool { color: #ff8888; }
+        .log-synthesis { color: #ff9999; }
+        .log-intent { color: #ffaaaa; }
+        
+        .toggle-logs {
+            cursor: pointer;
+            color: #ff0000;
+            text-decoration: underline;
+            font-size: 0.7rem;
+            margin-top: 0.5rem;
+            display: inline-block;
+            text-shadow: 0 0 5px #ff0000;
+        }
+        
+        .toggle-logs:hover { color: #ff3333; }
+        
+        .input-area {
+            background: linear-gradient(0deg, #1a0000 0%, #000000 100%);
+            padding: 1.5rem 2rem;
+            border-top: 2px solid #ff0000;
+            display: flex;
+            gap: 1rem;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+            position: relative;
+            z-index: 10;
+        }
+        
+        input {
+            flex: 1;
+            padding: 1rem;
+            background: #000000;
+            border: 2px solid #ff0000;
+            color: #ff0000;
+            font-size: 1rem;
+            font-family: 'Orbitron', monospace;
+            transition: all 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+            border-color: #ff3333;
+        }
+        
+        input::placeholder { color: #660000; }
+        
+        button {
+            padding: 1rem 2.5rem;
+            background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+            color: #000000;
+            border: 2px solid #ff0000;
+            font-weight: 900;
+            font-family: 'Orbitron', monospace;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #ff3333 0%, #ff0000 100%);
+            box-shadow: 0 0 25px rgba(255, 0, 0, 0.8);
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #330000;
+            color: #660000;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        
+        .loading {
+            color: #ff0000;
+            padding: 1rem;
+            text-align: center;
+            animation: pulse 1.5s infinite;
+            text-shadow: 0 0 10px #ff0000;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="tron-grid"></div>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function ChatApp() {
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState('');
+            const [loading, setLoading] = useState(false);
+            const chatContainerRef = useRef(null);
+
+            useEffect(() => {
+                if (chatContainerRef.current) {
+                    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+                }
+            }, [messages]);
+
+            const sendMessage = async () => {
+                if (!input.trim()) return;
+
+                const userMessage = { text: input, isUser: true };
+                setMessages(prev => [...prev, userMessage]);
+                setInput('');
+                setLoading(true);
+
+                try {
+                    const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: input })
+                    });
+                    const data = await response.json();
+                    
+                    const agentMessage = {
+                        text: data.reply,
+                        isUser: false,
+                        debug: data.debug,
+                        logs: data.logs
+                    };
+                    setMessages(prev => [...prev, agentMessage]);
+                } catch (error) {
+                    const errorMessage = {
+                        text: 'ERROR: CONNECTION FAILED',
+                        isUser: false
+                    };
+                    setMessages(prev => [...prev, errorMessage]);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter') sendMessage();
+            };
+
+            return (
+                <>
+                    <div className="header">
+                        <h1>⚡ TRON REASONING AGENT</h1>
+                    </div>
+                    <div className="chat-container" ref={chatContainerRef}>
+                        {messages.map((msg, idx) => (
+                            <Message key={idx} {...msg} />
+                        ))}
+                        {loading && <div className="loading">PROCESSING...</div>}
+                    </div>
+                    <div className="input-area">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyPress={handleKeyPress}
+                            placeholder="ENTER COMMAND..."
+                            autoFocus
+                        />
+                        <button onClick={sendMessage} disabled={loading}>
+                            EXECUTE
+                        </button>
+                    </div>
+                </>
+            );
+        }
+
+        function Message({ text, isUser, debug, logs }) {
+            const [showLogs, setShowLogs] = useState(false);
+
+            return (
+                <div className={`message ${isUser ? 'user' : 'agent'}`}>
+                    <div>{text}</div>
+                    {debug && (
+                        <div className="debug">
+                            INTENT: {debug.intent} | SENTIMENT: {debug.sentiment} ({debug.sentiment_score.toFixed(3)}) | TOOL: {debug.tool}
+                            <br />
+                            PRIMARY: {debug.intent_analysis?.primary_intent || 'N/A'} | 
+                            CONFIDENCE: {(debug.intent_analysis?.confidence || 0).toFixed(2)} | 
+                            URGENCY: {debug.intent_analysis?.urgency || 'N/A'}
+                        </div>
+                    )}
+                    {logs && logs.length > 0 && (
+                        <>
+                            <div className="toggle-logs" onClick={() => setShowLogs(!showLogs)}>
+                                {showLogs ? '▼' : '▶'} SYSTEM LOGS
+                            </div>
+                            {showLogs && (
+                                <div className="logs">
+                                    {logs.map((log, idx) => {
+                                        let className = '';
+                                        if (log.includes('[INPUT]')) className = 'log-input';
+                                        else if (log.includes('[SENTIMENT]')) className = 'log-sentiment';
+                                        else if (log.includes('[DECISION]')) className = 'log-decision';
+                                        else if (log.includes('[PROMPT]')) className = 'log-prompt';
+                                        else if (log.includes('[LLM_RAW]')) className = 'log-llm';
+                                        else if (log.includes('[PARSE]')) className = 'log-parse';
+                                        else if (log.includes('[TOOL]')) className = 'log-tool';
+                                        else if (log.includes('[SYNTHESIS]')) className = 'log-synthesis';
+                                        else if (log.includes('[INTENT_ANALYSIS]')) className = 'log-intent';
+                                        
+                                        return <div key={idx} className={className}>{log}</div>;
+                                    })}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<ChatApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
