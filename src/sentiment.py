@@ -1,33 +1,34 @@
 from typing import Dict
-try:
-    from transformers import pipeline
-    TRANSFORMERS_AVAILABLE = True
-except Exception:
-    TRANSFORMERS_AVAILABLE = False
+from pydantic import BaseModel, Field
+
+class SentimentOutput(BaseModel):
+    label: str = Field(description="POSITIVE, NEGATIVE, or NEUTRAL")
+    score: float = Field(description="Confidence score 0-1")
+    reasoning: str = Field(description="Brief explanation")
 
 class SentimentAnalyzer:
-    def __init__(self):
-        if TRANSFORMERS_AVAILABLE:
-            try:
-                self.pipe = pipeline("sentiment-analysis")
-                print("[sentiment] using transformers pipeline")
-            except Exception:
-                self.pipe = None
-        else:
-            self.pipe = None
-            print("[sentiment] transformers not available - fallback")
+    def __init__(self, ollama_client=None):
+        self.ollama = ollama_client
+        if not ollama_client:
+            raise Exception("SentimentAnalyzer requires ollama_client")
+        print("[sentiment] using LLM-based sentiment analysis")
 
     def analyze(self, text: str) -> Dict[str, float]:
-        if self.pipe:
-            r = self.pipe(text, truncation=True)[0]
-            return {"label": r.get("label").upper(), "score": float(r.get("score", 0.0))}
-        txt = text.lower()
-        neg_words = ["not", "can't", "failed", "frustrat", "angry", "sad", "upset"]
-        pos_words = ["happy", "great", "awesome", "finished", "thanks"]
-        neg = sum(1 for w in neg_words if w in txt)
-        pos = sum(1 for w in pos_words if w in txt)
-        if neg > pos:
-            return {"label": "NEGATIVE", "score": min(0.99, 0.5 + 0.1*(neg-pos))}
-        if pos > neg:
-            return {"label": "POSITIVE", "score": min(0.99, 0.5 + 0.1*(pos-neg))}
-        return {"label": "NEUTRAL", "score": 0.5}
+        prompt = f"""Analyze the sentiment of this text.
+
+Text: "{text}"
+
+Determine if the sentiment is POSITIVE, NEGATIVE, or NEUTRAL with a confidence score."""
+
+        messages = [
+            {"role": "system", "content": "You are a sentiment analysis expert."},
+            {"role": "user", "content": prompt}
+        ]
+        
+        # Use structured output
+        result = self.ollama.chat(messages, model="gpt-4o-mini", response_format=SentimentOutput)
+        return {
+            "label": result.label.upper(),
+            "score": result.score,
+            "reasoning": result.reasoning
+        }

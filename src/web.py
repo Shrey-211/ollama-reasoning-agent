@@ -12,8 +12,8 @@ from src.agent import ReasoningAgent
 
 app = Flask(__name__)
 
-ollama = OllamaClient(model=os.getenv("OLLAMA_MODEL", "deepseek-r1:8b"))
-sentiment = SentimentAnalyzer()
+ollama = OllamaClient(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+sentiment = SentimentAnalyzer(ollama_client=ollama)
 docs = DocumentStore(docs_dir="./docs")
 memory = MemoryStore(memory_dir="./memory")
 learning = LearningStore(learning_dir="./learnings")
@@ -39,14 +39,14 @@ def chat():
     print("="*60 + "\n")
     
     return jsonify({
-        'reply': result['final'],
+        'reply': result.get('final', 'No response'),
         'logs': result.get('logs', []),
         'debug': {
-            'intent': result.get('agent_output', {}).get('intent', 'unknown'),
-            'sentiment': result['sentiment']['label'],
-            'sentiment_score': result['sentiment']['score'],
-            'tool': result.get('tool_out', {}).get('tool', 'none'),
-            'reasoning': result.get('agent_output', {}).get('reasoning', ''),
+            'intent': result.get('agent_output', {}).get('intent', 'escalate'),
+            'sentiment': result.get('sentiment', result.get('meta', {}).get('sentiment', {})).get('label', 'unknown'),
+            'sentiment_score': result.get('sentiment', result.get('meta', {}).get('sentiment', {})).get('score', 0),
+            'tool': result.get('tool_out', {}).get('tool', 'escalate'),
+            'reasoning': result.get('agent_output', {}).get('reasoning', 'escalated'),
             'intent_analysis': result.get('intent_analysis', {})
         }
     })

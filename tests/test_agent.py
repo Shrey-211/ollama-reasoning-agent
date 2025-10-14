@@ -10,7 +10,7 @@ from src.agent import ReasoningAgent
 
 def test_calculation_intent():
     ollama = OllamaClient()
-    sentiment = SentimentAnalyzer()
+    sentiment = SentimentAnalyzer(ollama_client=ollama)
     docs = DocumentStore(docs_dir="./docs")
     memory = MemoryStore(memory_dir="./test_memory")
     agent = ReasoningAgent(ollama, docs, sentiment, memory)
@@ -19,7 +19,7 @@ def test_calculation_intent():
 
 def test_search_intent():
     ollama = OllamaClient()
-    sentiment = SentimentAnalyzer()
+    sentiment = SentimentAnalyzer(ollama_client=ollama)
     docs = DocumentStore(docs_dir="./docs")
     memory = MemoryStore(memory_dir="./test_memory")
     agent = ReasoningAgent(ollama, docs, sentiment, memory)
@@ -28,7 +28,7 @@ def test_search_intent():
 
 def test_memory_operations():
     ollama = OllamaClient()
-    sentiment = SentimentAnalyzer()
+    sentiment = SentimentAnalyzer(ollama_client=ollama)
     docs = DocumentStore(docs_dir="./docs")
     memory = MemoryStore(memory_dir="./test_memory")
     agent = ReasoningAgent(ollama, docs, sentiment, memory)

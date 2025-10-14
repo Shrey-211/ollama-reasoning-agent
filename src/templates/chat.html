@@ -7,6 +7,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
         
@@ -94,6 +95,16 @@
             box-shadow: 0 0 15px rgba(255, 0, 0, 0.2);
         }
         
+        .agent h1, .agent h2, .agent h3 { color: #ff0000; margin: 0.5rem 0; }
+        .agent p { margin: 0.5rem 0; }
+        .agent ul, .agent ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+        .agent li { margin: 0.25rem 0; }
+        .agent code { background: #1a0000; padding: 0.2rem 0.4rem; border-radius: 3px; color: #ff3333; }
+        .agent pre { background: #1a0000; padding: 1rem; border-radius: 5px; overflow-x: auto; border: 1px solid #ff0000; }
+        .agent pre code { background: none; padding: 0; }
+        .agent strong { color: #ff3333; }
+        .agent a { color: #ff0000; text-decoration: underline; }
+        
         .debug {
             font-size: 0.7rem;
             color: #ff3333;
@@ -125,6 +136,7 @@
         .log-tool { color: #ff8888; }
         .log-synthesis { color: #ff9999; }
         .log-intent { color: #ffaaaa; }
+        .log-final { color: #ff0000; font-weight: bold; text-shadow: 0 0 5px #ff0000; }
         
         .toggle-logs {
             cursor: pointer;
@@ -297,9 +309,20 @@
         function Message({ text, isUser, debug, logs }) {
             const [showLogs, setShowLogs] = useState(false);
 
+            const renderMarkdown = (content) => {
+                if (typeof marked !== 'undefined') {
+                    return { __html: marked.parse(content) };
+                }
+                return { __html: content.replace(/\n/g, '<br>') };
+            };
+
             return (
                 <div className={`message ${isUser ? 'user' : 'agent'}`}>
-                    <div>{text}</div>
+                    {isUser ? (
+                        <div>{text}</div>
+                    ) : (
+                        <div dangerouslySetInnerHTML={renderMarkdown(text)} />
+                    )}
                     {debug && (
                         <div className="debug">
                             INTENT: {debug.intent} | SENTIMENT: {debug.sentiment} ({debug.sentiment_score.toFixed(3)}) | TOOL: {debug.tool}
@@ -327,6 +350,7 @@
                                         else if (log.includes('[TOOL]')) className = 'log-tool';
                                         else if (log.includes('[SYNTHESIS]')) className = 'log-synthesis';
                                         else if (log.includes('[INTENT_ANALYSIS]')) className = 'log-intent';
+                                        else if (log.includes('[FINAL_ANSWER]')) className = 'log-final';
                                         
                                         return <div key={idx} className={className}>{log}</div>;
                                     })}

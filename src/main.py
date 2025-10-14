@@ -11,8 +11,8 @@ from src.agent import ReasoningAgent
 
 if __name__ == "__main__":
     print("Starting Ollama reasoning agent (modular OOP)")
-    ollama = OllamaClient(model="llama3")
-    sentiment = SentimentAnalyzer()
+    ollama = OllamaClient(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+    sentiment = SentimentAnalyzer(ollama_client=ollama)
     docs = DocumentStore(docs_dir="./docs")
     memory = MemoryStore(memory_dir="./memory")
     learning = LearningStore(learning_dir="./learnings")
