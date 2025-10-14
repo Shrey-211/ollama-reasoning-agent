@@ -10,8 +10,20 @@ from .intent_analyzer import IntentAnalyzer
 from .tools import Tools
 
 class AgentOutput(BaseModel):
+    model_config = {
+        "extra": "forbid",
+        "json_schema_extra": {
+            "properties": {
+                "arguments": {
+                    "type": "object",
+                    "additionalProperties": False
+                }
+            }
+        }
+    }
+    
     intent: str = Field(description="The tool/action to execute")
-    arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments for the tool")
+    arguments: Dict[str, Any] = Field(description="Arguments for the tool")
     reasoning: str = Field(description="Why this tool was chosen")
 
 class ReasoningAgent:
@@ -46,7 +58,7 @@ JSON:"""
 
     def _run_tool(self, ao: AgentOutput) -> Dict[str, Any]:
         intent = ao.intent
-        args = ao.arguments or {}
+        args = ao.arguments if ao.arguments else {}
         
         if intent == "search_docs":
             q = args.get("query") or args.get("q") or ""
@@ -160,7 +172,7 @@ JSON:"""
 
     def _synthesize_final(self, user_message: str, ao: AgentOutput, tool_out: Dict[str, Any]) -> str:
         system = "You are an assistant. Use the tool_output to craft a concise user-facing reply."
-        payload = {"user_message": user_message, "agent_decision": ao.dict(), "tool_output": tool_out}
+        payload = {"user_message": user_message, "agent_decision": ao.model_dump(), "tool_output": tool_out}
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(payload, indent=2)}
@@ -184,13 +196,13 @@ JSON:"""
         
         # Step 2: Sentiment Analysis (LLM-based)
         sent = self.sentiment.analyze(user_message)
-        logs.append(f"[SENTIMENT] Label: {sent.get('label')}, Score: {sent.get('score'):.3f}")
-        if sent.get('reasoning'):
-            logs.append(f"[SENTIMENT] Reasoning: {sent.get('reasoning')}")
+        logs.append(f"[SENTIMENT] Label: {sent.label}, Score: {sent.score:.3f}")
+        if sent.reasoning:
+            logs.append(f"[SENTIMENT] Reasoning: {sent.reasoning}")
         
-        if sent.get("label") == "NEGATIVE" and sent.get("score", 0) >= 0.8:
+        if sent.label == "NEGATIVE" and sent.score >= 0.8:
             logs.append("[DECISION] Escalating due to strong negative sentiment")
-            return {"final": "Escalating to human operator due to strong negative sentiment.", "meta": {"sentiment": sent, "intent_analysis": intent_analysis}, "logs": logs}
+            return {"final": "Escalating to human operator due to strong negative sentiment.", "meta": {"sentiment": sent.model_dump(), "intent_analysis": intent_analysis}, "logs": logs}
         
         # Step 3: Build flexible prompt with intent context
         prompt = self._build_structured_prompt(user_message, intent_analysis)
@@ -209,4 +221,4 @@ JSON:"""
         logs.append(f"[SYNTHESIS] Generated final response")
         logs.append(f"[FINAL_ANSWER] {final}")
         
-        return {"final": final, "agent_output": ao.dict(), "tool_out": tool_out, "sentiment": sent, "intent_analysis": intent_analysis, "logs": logs}
+        return {"final": final, "agent_output": ao.model_dump(), "tool_out": tool_out, "sentiment": sent.model_dump(), "intent_analysis": intent_analysis, "logs": logs}

@@ -4,14 +4,12 @@ from pydantic import BaseModel, Field
 from .ollama_client import OllamaClient
 
 class IntentAnalysisOutput(BaseModel):
+    model_config = {"extra": "forbid", "json_schema_extra": {"additionalProperties": False}}
+    
     primary_intent: str = Field(description="Main intent of the user")
-    secondary_intents: List[str] = Field(default_factory=list, description="Additional sub-goals")
-    entities: Dict[str, str] = Field(default_factory=dict, description="Extracted entities")
     action_required: str = Field(description="What action should be taken")
-    context_clues: List[str] = Field(default_factory=list, description="Implicit information")
     urgency: str = Field(description="low, medium, or high")
     complexity: str = Field(description="simple, moderate, or complex")
-    suggested_tools: List[str] = Field(default_factory=list, description="Recommended tools")
     confidence: float = Field(description="Confidence score 0-1")
     reasoning: str = Field(description="Explanation of the analysis")
 

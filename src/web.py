@@ -38,13 +38,15 @@ def chat():
         print(log)
     print("="*60 + "\n")
     
+    sentiment_data = result.get('sentiment') or result.get('meta', {}).get('sentiment', {})
+    
     return jsonify({
         'reply': result.get('final', 'No response'),
         'logs': result.get('logs', []),
         'debug': {
             'intent': result.get('agent_output', {}).get('intent', 'escalate'),
-            'sentiment': result.get('sentiment', result.get('meta', {}).get('sentiment', {})).get('label', 'unknown'),
-            'sentiment_score': result.get('sentiment', result.get('meta', {}).get('sentiment', {})).get('score', 0),
+            'sentiment': sentiment_data.get('label', 'unknown'),
+            'sentiment_score': sentiment_data.get('score', 0),
             'tool': result.get('tool_out', {}).get('tool', 'escalate'),
             'reasoning': result.get('agent_output', {}).get('reasoning', 'escalated'),
             'intent_analysis': result.get('intent_analysis', {})
