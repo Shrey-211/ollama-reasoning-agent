@@ -1,30 +1,22 @@
 from typing import Optional, Dict, Any
 import json
-from pydantic import BaseModel, Field
 from ..llm_client.ollama_client import OllamaClient
 from ..sentiment.sentiment import SentimentAnalyzer
 from ..store.document_store import DocumentStore
 from ..store.memory_store import MemoryStore
 from ..store.learning_store import LearningStore
 from ..intent_analyser.intent_analyzer import IntentAnalyzer
+from ..functions.tool_selection_functions import get_tool_selection_function
 from ..tools import Tools
 
-class AgentOutput(BaseModel):
-    model_config = {
-        "extra": "forbid",
-        "json_schema_extra": {
-            "properties": {
-                "arguments": {
-                    "type": "object",
-                    "additionalProperties": False
-                }
-            }
-        }
-    }
+class AgentOutput:
+    def __init__(self, intent: str, arguments: Dict[str, Any], reasoning: str):
+        self.intent = intent
+        self.arguments = arguments
+        self.reasoning = reasoning
     
-    intent: str = Field(description="The tool/action to execute")
-    arguments: Dict[str, Any] = Field(description="Arguments for the tool")
-    reasoning: str = Field(description="Why this tool was chosen")
+    def model_dump(self):
+        return {"intent": self.intent, "arguments": self.arguments, "reasoning": self.reasoning}
 
 class ReasoningAgent:
     def __init__(self, ollama: OllamaClient, docs: DocumentStore, sentiment: SentimentAnalyzer, memory: MemoryStore = None, learning: LearningStore = None):
@@ -35,26 +27,12 @@ class ReasoningAgent:
         self.learning = learning or LearningStore()
         self.intent_analyzer = IntentAnalyzer(ollama)
 
-    def _build_structured_prompt(self, user_message: str, intent_analysis: Dict[str, Any] = None) -> str:
-        
-        examples = [
-            {"user": "my name is John", "output": {"intent": "remember", "arguments": {"content": "my name is John", "category": "personal"}, "reasoning": "store name"}},
-            {"user": "remember that I like pizza", "output": {"intent": "remember", "arguments": {"content": "I like pizza", "category": "preferences"}, "reasoning": "store preference"}},
-            {"user": "what do you know about me?", "output": {"intent": "recall", "arguments": {"query": "user information", "k": 5}, "reasoning": "retrieve memories"}},
-            {"user": "calculate 5+3", "output": {"intent": "calculator", "arguments": {"expr": "5+3"}, "reasoning": "math operation"}}
-        ]
-        
-        examples_str = "\n".join([f"User: {ex['user']}\nJSON: {json.dumps(ex['output'])}" for ex in examples])
-        
-        prompt = f"""You are a tool selector. Return ONLY valid JSON.
-
-Examples:
-{examples_str}
-
-Now respond to:
-User: {user_message}
-JSON:"""
-        return prompt
+    def _build_tool_selection_prompt(self, user_message: str, intent_analysis: Dict[str, Any] = None) -> str:
+        context = f"User message: {user_message}\n"
+        if intent_analysis:
+            context += f"Intent: {intent_analysis.get('primary_intent')}\n"
+            context += f"Action: {intent_analysis.get('action_required')}\n"
+        return context + "Select the appropriate tool and provide arguments."
 
     def _run_tool(self, ao: AgentOutput) -> Dict[str, Any]:
         intent = ao.intent
@@ -185,40 +163,82 @@ JSON:"""
         logs = []
         logs.append(f"[INPUT] User message: {user_message}")
         
-        # Step 1: Deep Intent Analysis
-        logs.append("[INTENT_ANALYSIS] Starting deep intent analysis...")
-        intent_analysis = self.intent_analyzer.analyze_intent(user_message)
-        logs.append(f"[INTENT_ANALYSIS] Primary: {intent_analysis.get('primary_intent')}")
-        logs.append(f"[INTENT_ANALYSIS] Action: {intent_analysis.get('action_required')}")
-        logs.append(f"[INTENT_ANALYSIS] Urgency: {intent_analysis.get('urgency')}, Complexity: {intent_analysis.get('complexity')}")
-        logs.append(f"[INTENT_ANALYSIS] Confidence: {intent_analysis.get('confidence', 0):.2f}")
-        logs.append(f"[INTENT_ANALYSIS] Reasoning: {intent_analysis.get('reasoning', 'N/A')}")
+        try:
+            # Step 1: Deep Intent Analysis
+            logs.append("[INTENT_ANALYSIS] Starting deep intent analysis...")
+            intent_analysis = self.intent_analyzer.analyze_intent(user_message)
+            logs.append(f"[INTENT_ANALYSIS] Primary: {intent_analysis.get('primary_intent')}")
+            logs.append(f"[INTENT_ANALYSIS] Action: {intent_analysis.get('action_required')}")
+            logs.append(f"[INTENT_ANALYSIS] Urgency: {intent_analysis.get('urgency')}, Complexity: {intent_analysis.get('complexity')}")
+            logs.append(f"[INTENT_ANALYSIS] Confidence: {intent_analysis.get('confidence', 0):.2f}")
+            logs.append(f"[INTENT_ANALYSIS] Reasoning: {intent_analysis.get('reasoning', 'N/A')}")
+        except Exception as e:
+            logs.append(f"[INTENT_ANALYSIS] Error: {str(e)}")
+            intent_analysis = {"primary_intent": "unknown", "action_required": "escalate", "urgency": "medium", "complexity": "simple", "confidence": 0, "reasoning": "Analysis failed"}
         
-        # Step 2: Sentiment Analysis (LLM-based)
-        sent = self.sentiment.analyze(user_message)
-        logs.append(f"[SENTIMENT] Label: {sent.label}, Score: {sent.score:.3f}")
-        if sent.reasoning:
-            logs.append(f"[SENTIMENT] Reasoning: {sent.reasoning}")
+        try:
+            # Step 2: Sentiment Analysis (LLM-based)
+            sent = self.sentiment.analyze(user_message)
+            logs.append(f"[SENTIMENT] Label: {sent.label}, Score: {sent.score:.3f}")
+            if sent.reasoning:
+                logs.append(f"[SENTIMENT] Reasoning: {sent.reasoning}")
+        except Exception as e:
+            logs.append(f"[SENTIMENT] Error: {str(e)}")
+            from ..sentiment.sentiment import SentimentOutput
+            sent = SentimentOutput(label="NEUTRAL", score=0.5, reasoning="Analysis failed")
         
         if sent.label == "NEGATIVE" and sent.score >= 0.8:
             logs.append("[DECISION] Escalating due to strong negative sentiment")
             return {"final": "Escalating to human operator due to strong negative sentiment.", "meta": {"sentiment": sent.model_dump(), "intent_analysis": intent_analysis}, "logs": logs}
         
-        # Step 3: Build flexible prompt with intent context
-        prompt = self._build_structured_prompt(user_message, intent_analysis)
-        logs.append(f"[PROMPT] Built flexible prompt with examples")
+        # Step 3: Tool selection using function calling
+        try:
+            prompt = self._build_tool_selection_prompt(user_message, intent_analysis)
+            logs.append(f"[PROMPT] Built tool selection prompt")
+            print(f"[agent] Prompt: {prompt[:100]}")
+            
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant that selects the right tool based on user intent."},
+                {"role": "user", "content": prompt}
+            ]
+            
+            result = self.ollama.chat(messages, model="gpt-4o", functions=[get_tool_selection_function()])
+            print(f"[agent] Result keys: {list(result.keys())}")
+            
+            if "function_name" not in result:
+                print(f"[agent] No function_name, result: {result}")
+                if "content" in result:
+                    ao = AgentOutput(intent="escalate", arguments={"reason": "No structured response", "priority": "low"}, reasoning="Model returned text instead of function call")
+                else:
+                    raise ValueError("No function call returned for tool selection")
+            else:
+                args = result["arguments"]
+                print(f"[agent] Args keys: {list(args.keys())}")
+                ao = AgentOutput(
+                    intent=args.get("intent", "escalate"),
+                    arguments=args.get("tool_arguments", args.get("arguments", {})),
+                    reasoning=args.get("reasoning", "No reasoning provided")
+                )
+            logs.append(f"[TOOL_SELECTION] Intent: {ao.intent}, Args: {ao.arguments}")
+            logs.append(f"[REASONING] {ao.reasoning}")
+        except Exception as e:
+            print(f"[agent] Exception: {type(e).__name__}: {str(e)}")
+            logs.append(f"[TOOL_SELECTION] Error: {str(e)}")
+            ao = AgentOutput(intent="escalate", arguments={"reason": "Tool selection failed", "priority": "medium"}, reasoning="Error in tool selection")
         
-        messages = [{"role": "system", "content": "You are a helpful assistant that selects the right tool based on user intent."}, {"role": "user", "content": prompt}]
-        # Use gpt-4o for tool selection with structured output
-        ao = self.ollama.chat(messages, model="gpt-4o", response_format=AgentOutput)
-        logs.append(f"[TOOL_SELECTION] Intent: {ao.intent}, Args: {ao.arguments}")
-        logs.append(f"[REASONING] {ao.reasoning}")
+        try:
+            tool_out = self._run_tool(ao)
+            logs.append(f"[TOOL] Executed {tool_out.get('tool')}, Result: {str(tool_out.get('result'))[:100]}...")
+        except Exception as e:
+            logs.append(f"[TOOL] Error: {str(e)}")
+            tool_out = {"tool": "error", "result": {"error": str(e)}}
         
-        tool_out = self._run_tool(ao)
-        logs.append(f"[TOOL] Executed {tool_out.get('tool')}, Result: {str(tool_out.get('result'))[:100]}...")
-        
-        final = self._synthesize_final(user_message, ao, tool_out)
-        logs.append(f"[SYNTHESIS] Generated final response")
-        logs.append(f"[FINAL_ANSWER] {final}")
+        try:
+            final = self._synthesize_final(user_message, ao, tool_out)
+            logs.append(f"[SYNTHESIS] Generated final response")
+            logs.append(f"[FINAL_ANSWER] {final}")
+        except Exception as e:
+            logs.append(f"[SYNTHESIS] Error: {str(e)}")
+            final = "I encountered an error processing your request. Please try again."
         
         return {"final": final, "agent_output": ao.model_dump(), "tool_out": tool_out, "sentiment": sent.model_dump(), "intent_analysis": intent_analysis, "logs": logs}

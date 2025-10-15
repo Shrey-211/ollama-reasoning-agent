@@ -56,4 +56,5 @@ def chat():
 if __name__ == '__main__':
     print("\n🚀 Starting Ollama Reasoning Agent Web UI")
     print("📍 Open http://localhost:5000 in your browser\n")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(host='0.0.0.0', port=5000, debug=debug_mode)

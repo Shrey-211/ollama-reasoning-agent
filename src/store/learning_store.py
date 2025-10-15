@@ -5,23 +5,31 @@ import datetime
 
 class LearningStore:
     def __init__(self, learning_dir: str = "./learnings"):
-        self.learning_dir = learning_dir
-        self.learning_file = os.path.join(learning_dir, "learnings.json")
+        self.learning_dir = os.path.abspath(learning_dir)
+        self.learning_file = os.path.join(self.learning_dir, "learnings.json")
         self.learnings = {}
-        os.makedirs(learning_dir, exist_ok=True)
+        os.makedirs(self.learning_dir, exist_ok=True)
         self._load_learnings()
 
     def _load_learnings(self):
-        if os.path.exists(self.learning_file):
-            with open(self.learning_file, 'r', encoding='utf-8') as f:
-                self.learnings = json.load(f)
+        try:
+            if os.path.exists(self.learning_file):
+                with open(self.learning_file, 'r', encoding='utf-8') as f:
+                    self.learnings = json.load(f)
+        except (IOError, json.JSONDecodeError) as e:
+            print(f"[learning] Error loading learnings: {e}")
+            self.learnings = {}
 
     def _save_learnings(self):
-        with open(self.learning_file, 'w', encoding='utf-8') as f:
-            json.dump(self.learnings, f, indent=2, ensure_ascii=False)
+        try:
+            with open(self.learning_file, 'w', encoding='utf-8') as f:
+                json.dump(self.learnings, f, indent=2, ensure_ascii=False)
+        except IOError as e:
+            print(f"[learning] Error saving learnings: {e}")
 
     def teach(self, name: str, steps: List[str], description: str = "", tags: List[str] = None) -> Dict[str, Any]:
         learning_id = f"LEARN-{name.lower().replace(' ', '_')}"
+        now = datetime.datetime.now(datetime.timezone.utc)
         
         self.learnings[learning_id] = {
             "id": learning_id,
@@ -29,8 +37,8 @@ class LearningStore:
             "description": description,
             "steps": steps,
             "tags": tags or [],
-            "created_at": datetime.datetime.now().isoformat(),
-            "updated_at": datetime.datetime.now().isoformat(),
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
             "execution_count": 0
         }
         
@@ -63,7 +71,7 @@ class LearningStore:
         
         learning = result['learning']
         learning['execution_count'] += 1
-        learning['last_executed'] = datetime.datetime.now().isoformat()
+        learning['last_executed'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self._save_learnings()
         
         return {
@@ -90,7 +98,7 @@ class LearningStore:
         if tags is not None:
             learning['tags'] = tags
         
-        learning['updated_at'] = datetime.datetime.now().isoformat()
+        learning['updated_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self._save_learnings()
         
         return {

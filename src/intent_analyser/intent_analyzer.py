@@ -1,17 +1,6 @@
-from typing import Dict, Any, List
-import json
-from pydantic import BaseModel, Field
+from typing import Dict, Any
 from ..llm_client.ollama_client import OllamaClient
-
-class IntentAnalysisOutput(BaseModel):
-    model_config = {"extra": "forbid", "json_schema_extra": {"additionalProperties": False}}
-    
-    primary_intent: str = Field(description="Main intent of the user")
-    action_required: str = Field(description="What action should be taken")
-    urgency: str = Field(description="low, medium, or high")
-    complexity: str = Field(description="simple, moderate, or complex")
-    confidence: float = Field(description="Confidence score 0-1")
-    reasoning: str = Field(description="Explanation of the analysis")
+from ..functions.intent_functions import get_intent_function
 
 class IntentAnalyzer:
     def __init__(self, ollama: OllamaClient):
@@ -19,43 +8,19 @@ class IntentAnalyzer:
 
     def analyze_intent(self, user_message: str) -> Dict[str, Any]:
         """Deep intent analysis using LLM reasoning"""
-        
-        prompt = f"""Analyze the user's intent deeply. Return ONLY valid JSON.
-
-User message: "{user_message}"
-
-Analyze:
-1. Primary intent (what does user want?)
-2. Secondary intents (any sub-goals?)
-3. Entities mentioned (names, dates, numbers, etc.)
-4. Action required (what should be done?)
-5. Context clues (implicit information)
-6. Urgency level (low/medium/high)
-7. Complexity (simple/moderate/complex)
-
-Return JSON:
-{{
-  "primary_intent": "string",
-  "secondary_intents": ["string"],
-  "entities": {{"type": "value"}},
-  "action_required": "string",
-  "context_clues": ["string"],
-  "urgency": "low|medium|high",
-  "complexity": "simple|moderate|complex",
-  "suggested_tools": ["tool_name"],
-  "confidence": 0.0-1.0,
-  "reasoning": "why this interpretation"
-}}"""
-
+        print(f"[intent] Analyzing: {user_message[:50]}")
         messages = [
-            {"role": "system", "content": "You are an expert intent analyzer. Return only valid JSON."},
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": "You are an expert intent analyzer."},
+            {"role": "user", "content": f"Analyze the user's intent deeply for this message: '{user_message}'"}
         ]
         
-        # Use gpt-4o-mini for fast intent analysis
-        # Use structured output
-        result = self.ollama.chat(messages, model="gpt-4o-mini", response_format=IntentAnalysisOutput)
-        return result.model_dump()
+        result = self.ollama.chat(messages, model="gpt-4o-mini", functions=[get_intent_function()])
+        print(f"[intent] Result keys: {list(result.keys())}")
+        
+        if "function_name" in result:
+            return result["arguments"]
+        
+        raise ValueError(f"No function call returned, got: {result}")
 
     def map_intent_to_tool(self, intent_analysis: Dict[str, Any]) -> str:
         """Map analyzed intent to specific tool"""

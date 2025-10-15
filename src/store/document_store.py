@@ -10,12 +10,12 @@ except Exception:
 
 class DocumentStore:
     def __init__(self, docs_dir: str = "./docs"):
-        self.docs_dir = docs_dir
-        os.makedirs(docs_dir, exist_ok=True)
+        self.docs_dir = os.path.abspath(docs_dir)
+        os.makedirs(self.docs_dir, exist_ok=True)
         
         if CHROMA_AVAILABLE:
             self.client = chromadb.PersistentClient(
-                path=os.path.join(docs_dir, ".chroma"),
+                path=os.path.join(self.docs_dir, ".chroma"),
                 settings=Settings(anonymized_telemetry=False)
             )
             self.collection = self.client.get_or_create_collection(
@@ -30,25 +30,32 @@ class DocumentStore:
             print('[docs] ChromaDB not available - DocumentStore disabled')
 
     def _load_and_index(self):
-        files = glob.glob(os.path.join(self.docs_dir, "*.txt"))
-        
-        existing_ids = set(self.collection.get()['ids'])
-        
-        for f in files:
-            doc_id = f"DOC-{os.path.basename(f)}"
+        try:
+            files = glob.glob(os.path.join(self.docs_dir, "*.txt"))
+            existing_ids = set(self.collection.get()['ids'])
             
-            if doc_id in existing_ids:
-                continue
-            
-            with open(f, "r", encoding="utf-8") as fh:
-                content = fh.read()
-            
-            if content.strip():
-                self.collection.add(
-                    documents=[content],
-                    metadatas=[{"source": os.path.basename(f), "path": f}],
-                    ids=[doc_id]
-                )
+            for f in files:
+                if not os.path.abspath(f).startswith(self.docs_dir):
+                    continue
+                
+                doc_id = f"DOC-{os.path.basename(f)}"
+                if doc_id in existing_ids:
+                    continue
+                
+                try:
+                    with open(f, "r", encoding="utf-8") as fh:
+                        content = fh.read()
+                    
+                    if content.strip():
+                        self.collection.add(
+                            documents=[content],
+                            metadatas=[{"source": os.path.basename(f), "path": f}],
+                            ids=[doc_id]
+                        )
+                except (IOError, OSError) as e:
+                    print(f"[docs] Error loading {f}: {e}")
+        except Exception as e:
+            print(f"[docs] Error indexing documents: {e}")
 
     def search(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
         if not CHROMA_AVAILABLE or not self.collection:

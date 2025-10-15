@@ -10,12 +10,12 @@ except Exception:
 
 class MemoryStore:
     def __init__(self, memory_dir: str = "./memory"):
-        self.memory_dir = memory_dir
-        os.makedirs(memory_dir, exist_ok=True)
+        self.memory_dir = os.path.abspath(memory_dir)
+        os.makedirs(self.memory_dir, exist_ok=True)
         
         if CHROMA_AVAILABLE:
             self.client = chromadb.PersistentClient(
-                path=memory_dir,
+                path=self.memory_dir,
                 settings=Settings(anonymized_telemetry=False)
             )
             self.collection = self.client.get_or_create_collection(
@@ -32,25 +32,29 @@ class MemoryStore:
         if not CHROMA_AVAILABLE:
             return {"success": False, "message": "ChromaDB not available"}
         
-        memory_id = f"MEM-{int(datetime.datetime.now().timestamp() * 1000)}"
-        metadata = {
-            "category": category,
-            "tags": ",".join(tags or []),
-            "timestamp": datetime.datetime.now().isoformat(),
-            "access_count": 0
-        }
-        
-        self.collection.add(
-            documents=[content],
-            metadatas=[metadata],
-            ids=[memory_id]
-        )
-        
-        return {
-            "success": True,
-            "memory_id": memory_id,
-            "message": f"Remembered: {content[:50]}..."
-        }
+        try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            memory_id = f"MEM-{int(now.timestamp() * 1000)}"
+            metadata = {
+                "category": category,
+                "tags": ",".join(tags or []),
+                "timestamp": now.isoformat(),
+                "access_count": 0
+            }
+            
+            self.collection.add(
+                documents=[content],
+                metadatas=[metadata],
+                ids=[memory_id]
+            )
+            
+            return {
+                "success": True,
+                "memory_id": memory_id,
+                "message": f"Remembered: {content[:50]}..."
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Error storing memory: {str(e)}"}
 
     def recall(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
         if not CHROMA_AVAILABLE:
@@ -77,11 +81,14 @@ class MemoryStore:
                     })
                     
                     # Update access count
-                    metadata['access_count'] = metadata.get('access_count', 0) + 1
-                    self.collection.update(
-                        ids=[mem_id],
-                        metadatas=[metadata]
-                    )
+                    try:
+                        metadata['access_count'] = metadata.get('access_count', 0) + 1
+                        self.collection.update(
+                            ids=[mem_id],
+                            metadatas=[metadata]
+                        )
+                    except Exception:
+                        pass
             
             return memories
         except Exception as e:

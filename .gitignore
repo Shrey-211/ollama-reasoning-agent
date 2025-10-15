@@ -6,7 +6,8 @@ __pycache__/
 .Python
 env/
 learnings/
-memory/
+memory/ -f
+docs/ -f
 venv/
 ENV/
 *.egg-info/

@@ -7,11 +7,15 @@ class Tools:
     @staticmethod
     def calculator(expr: str) -> Dict[str, Any]:
         """Advanced calculator with validation and detailed feedback"""
+        if not expr or not expr.strip():
+            return {"error": "Empty expression", "suggestion": "Provide a mathematical expression"}
+        
         allowed = set("0123456789+-*/(). ")
         if not set(expr) <= allowed:
             return {"error": "Expression contains unsafe characters", "suggestion": "Use only numbers and operators: + - * / ( )"}
+        
         try:
-            result = eval(expr)
+            result = eval(expr, {"__builtins__": {}}, {})
             return {
                 "result": result,
                 "expression": expr,
@@ -20,20 +24,23 @@ class Tools:
             }
         except ZeroDivisionError:
             return {"error": "Division by zero", "suggestion": "Cannot divide by zero"}
+        except (SyntaxError, NameError, TypeError) as e:
+            return {"error": "Invalid expression", "suggestion": "Check your mathematical expression syntax"}
         except Exception as e:
-            return {"error": str(e), "suggestion": "Check your mathematical expression syntax"}
+            return {"error": "Calculation failed", "suggestion": str(e)[:100]}
 
     @staticmethod
     def get_datetime(timezone: str = "UTC") -> Dict[str, Any]:
         """Get current date and time with formatting"""
-        now = datetime.datetime.now()
+        now = datetime.datetime.now(datetime.timezone.utc)
         return {
             "datetime": now.isoformat(),
             "date": now.strftime("%Y-%m-%d"),
             "time": now.strftime("%H:%M:%S"),
             "day": now.strftime("%A"),
             "timestamp": now.timestamp(),
-            "formatted": now.strftime("%B %d, %Y at %I:%M %p")
+            "formatted": now.strftime("%B %d, %Y at %I:%M %p"),
+            "timezone": "UTC"
         }
 
     @staticmethod
@@ -123,12 +130,16 @@ class Tools:
     @staticmethod
     def escalate(reason: str, priority: str = "medium") -> Dict[str, Any]:
         """Escalate to human with priority and context"""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        valid_priorities = ["low", "medium", "high", "critical"]
+        if priority not in valid_priorities:
+            priority = "medium"
         return {
             "escalated": True,
             "reason": reason,
             "priority": priority,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "ticket_id": f"ESC-{int(datetime.datetime.now().timestamp())}",
+            "timestamp": now.isoformat(),
+            "ticket_id": f"ESC-{int(now.timestamp())}",
             "message": f"Escalated to human operator: {reason}"
         }
 
