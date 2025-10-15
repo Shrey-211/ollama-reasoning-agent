@@ -5,6 +5,10 @@ from ..sentiment.sentiment import SentimentAnalyzer
 from ..store.document_store import DocumentStore
 from ..store.memory_store import MemoryStore
 from ..store.learning_store import LearningStore
+from ..store.episodic_memory_store import EpisodicMemoryStore
+from ..store.memory_types import MemoryTypes
+from ..store.continuous_learning import ContinuousLearning
+from ..store.conversation_analyzer import ConversationAnalyzer
 from ..intent_analyser.intent_analyzer import IntentAnalyzer
 from ..functions.tool_selection_functions import get_tool_selection_function
 from ..tools import Tools
@@ -19,12 +23,16 @@ class AgentOutput:
         return {"intent": self.intent, "arguments": self.arguments, "reasoning": self.reasoning}
 
 class ReasoningAgent:
-    def __init__(self, ollama: OllamaClient, docs: DocumentStore, sentiment: SentimentAnalyzer, memory: MemoryStore = None, learning: LearningStore = None):
+    def __init__(self, ollama: OllamaClient, docs: DocumentStore, sentiment: SentimentAnalyzer, memory: MemoryStore = None, learning: LearningStore = None, episodic: EpisodicMemoryStore = None):
         self.ollama = ollama
         self.docs = docs
         self.sentiment = sentiment
         self.memory = memory or MemoryStore()
         self.learning = learning or LearningStore()
+        self.episodic = episodic or EpisodicMemoryStore(ollama)
+        self.memory_types = MemoryTypes(ollama, self.episodic, self.learning)
+        self.continuous_learning = ContinuousLearning(ollama, self.learning)
+        self.conversation_analyzer = ConversationAnalyzer(ollama)
         self.intent_analyzer = IntentAnalyzer(ollama)
 
     def _build_tool_selection_prompt(self, user_message: str, intent_analysis: Dict[str, Any] = None) -> str:
@@ -100,17 +108,34 @@ class ReasoningAgent:
         elif intent == "memory_stats":
             return {"tool": "memory_stats", "result": self.memory.get_stats()}
         
+        elif intent == "user_profile":
+            return {"tool": "user_profile", "result": self.conversation_analyzer.get_user_profile()}
+        
         elif intent == "teach":
             name = args.get("name", "")
             steps = args.get("steps", [])
             description = args.get("description", "")
             tags = args.get("tags", [])
-            return {"tool": "teach", "result": self.learning.teach(name, steps, description, tags)}
+            
+            if not steps:
+                result = self.continuous_learning.extract_explicit_teaching(args.get("content", ""))
+            else:
+                result = self.learning.teach(name, steps, description, tags)
+            
+            return {"tool": "teach", "result": result}
         
         elif intent == "execute_learning":
             name = args.get("name")
             learning_id = args.get("learning_id")
-            return {"tool": "execute_learning", "result": self.learning.execute_learning(name, learning_id)}
+            result = self.learning.execute_learning(name, learning_id)
+            if result.get("success"):
+                self.memory_types.add_interaction(
+                    f"Execute learning: {name}",
+                    f"Executed steps: {result.get('steps_executed', 0)}",
+                    {"label": "NEUTRAL", "score": 0.5},
+                    explicit_remember=True
+                )
+            return {"tool": "execute_learning", "result": result}
         
         elif intent == "get_learning":
             name = args.get("name")
@@ -148,8 +173,10 @@ class ReasoningAgent:
         
         return {"tool": "none", "result": None}
 
-    def _synthesize_final(self, user_message: str, ao: AgentOutput, tool_out: Dict[str, Any]) -> str:
+    def _synthesize_final(self, user_message: str, ao: AgentOutput, tool_out: Dict[str, Any], memory_context: str = "") -> str:
         system = "You are an assistant. Use the tool_output to craft a concise user-facing reply."
+        if memory_context:
+            system += f"\n\nRelevant past context:\n{memory_context}"
         payload = {"user_message": user_message, "agent_decision": ao.model_dump(), "tool_output": tool_out}
         messages = [
             {"role": "system", "content": system},
@@ -162,6 +189,21 @@ class ReasoningAgent:
     def handle(self, user_message: str) -> Dict[str, Any]:
         logs = []
         logs.append(f"[INPUT] User message: {user_message}")
+        
+        # Get short-term working memory context
+        short_term_context = self.memory_types.get_short_term_context()
+        if short_term_context:
+            logs.append(f"[SHORT_TERM] {short_term_context[:100]}")
+        
+        # Get user profile context
+        profile_context = self.conversation_analyzer.get_profile_context()
+        if profile_context:
+            logs.append(f"[PROFILE] {profile_context}")
+        
+        # Retrieve relevant episodic memories (long-term)
+        past_memories = self.episodic.retrieve_memories(user_message, n_results=3, min_importance=0.3)
+        if past_memories:
+            logs.append(f"[LONG_TERM] Retrieved {len(past_memories)} relevant memories")
         
         try:
             # Step 1: Deep Intent Analysis
@@ -234,11 +276,41 @@ class ReasoningAgent:
             tool_out = {"tool": "error", "result": {"error": str(e)}}
         
         try:
-            final = self._synthesize_final(user_message, ao, tool_out)
+            memory_context = ""
+            if profile_context:
+                memory_context += f"User profile: {profile_context}\n"
+            if short_term_context:
+                memory_context += f"Recent conversation: {short_term_context}\n"
+            if past_memories:
+                memory_context += "\n".join([f"- {m['content'][:100]}" for m in past_memories[:2]])
+            
+            final = self._synthesize_final(user_message, ao, tool_out, memory_context)
             logs.append(f"[SYNTHESIS] Generated final response")
             logs.append(f"[FINAL_ANSWER] {final}")
         except Exception as e:
             logs.append(f"[SYNTHESIS] Error: {str(e)}")
             final = "I encountered an error processing your request. Please try again."
+        
+        # Add to memory types (background processing)
+        try:
+            explicit_remember = ao.intent == "remember"
+            self.memory_types.add_interaction(user_message, final, sent.model_dump(), explicit_remember)
+            logs.append("[MEMORY] Background processing initiated")
+        except Exception as e:
+            logs.append(f"[MEMORY] Error: {str(e)}")
+        
+        # Continuous learning (background)
+        try:
+            self.continuous_learning.process_message(user_message, final)
+            logs.append("[LEARNING] Continuous learning active")
+        except Exception as e:
+            logs.append(f"[LEARNING] Error: {str(e)}")
+        
+        # Conversation analysis (background)
+        try:
+            self.conversation_analyzer.log_conversation(user_message, final, sent.model_dump())
+            logs.append("[ANALYZER] Conversation logged")
+        except Exception as e:
+            logs.append(f"[ANALYZER] Error: {str(e)}")
         
         return {"final": final, "agent_output": ao.model_dump(), "tool_out": tool_out, "sentiment": sent.model_dump(), "intent_analysis": intent_analysis, "logs": logs}

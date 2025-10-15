@@ -14,7 +14,7 @@ def get_tool_selection_function():
                         "remember", "recall", "forget", "list_memories", "memory_stats",
                         "teach", "execute_learning", "get_learning", "update_learning",
                         "delete_learning", "list_learnings", "search_learnings", "learning_stats",
-                        "escalate"
+                        "user_profile", "escalate"
                     ]
                 },
                 "tool_arguments": {

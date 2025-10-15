@@ -7,6 +7,7 @@ from src.sentiment.sentiment import SentimentAnalyzer
 from src.store.document_store import DocumentStore
 from src.store.memory_store import MemoryStore
 from src.store.learning_store import LearningStore
+from src.store.episodic_memory_store import EpisodicMemoryStore
 from src.agent.agent import ReasoningAgent
 
 if __name__ == "__main__":
@@ -16,7 +17,8 @@ if __name__ == "__main__":
     docs = DocumentStore(docs_dir="./docs")
     memory = MemoryStore(memory_dir="./memory")
     learning = LearningStore(learning_dir="./learnings")
-    agent = ReasoningAgent(ollama, docs, sentiment, memory, learning)
+    episodic = EpisodicMemoryStore(ollama, persist_directory="./memory")
+    agent = ReasoningAgent(ollama, docs, sentiment, memory, learning, episodic)
 
     while True:
         user = input("You: ")
