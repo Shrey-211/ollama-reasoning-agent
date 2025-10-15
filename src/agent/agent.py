@@ -1,13 +1,13 @@
 from typing import Optional, Dict, Any
 import json
 from pydantic import BaseModel, Field
-from .ollama_client import OllamaClient
-from .sentiment import SentimentAnalyzer
-from .document_store import DocumentStore
-from .memory_store import MemoryStore
-from .learning_store import LearningStore
-from .intent_analyzer import IntentAnalyzer
-from .tools import Tools
+from ..llm_client.ollama_client import OllamaClient
+from ..sentiment.sentiment import SentimentAnalyzer
+from ..store.document_store import DocumentStore
+from ..store.memory_store import MemoryStore
+from ..store.learning_store import LearningStore
+from ..intent_analyser.intent_analyzer import IntentAnalyzer
+from ..tools import Tools
 
 class AgentOutput(BaseModel):
     model_config = {

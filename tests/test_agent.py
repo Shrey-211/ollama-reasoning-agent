@@ -2,11 +2,11 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.ollama_client import OllamaClient
-from src.sentiment import SentimentAnalyzer
-from src.document_store import DocumentStore
-from src.memory_store import MemoryStore
-from src.agent import ReasoningAgent
+from src.llm_client.ollama_client import OllamaClient
+from src.sentiment.sentiment import SentimentAnalyzer
+from src.store.document_store import DocumentStore
+from src.store.memory_store import MemoryStore
+from src.agent.agent import ReasoningAgent
 
 def test_calculation_intent():
     ollama = OllamaClient()

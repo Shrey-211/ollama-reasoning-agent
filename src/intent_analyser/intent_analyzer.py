@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 import json
 from pydantic import BaseModel, Field
-from .ollama_client import OllamaClient
+from ..llm_client.ollama_client import OllamaClient
 
 class IntentAnalysisOutput(BaseModel):
     model_config = {"extra": "forbid", "json_schema_extra": {"additionalProperties": False}}
