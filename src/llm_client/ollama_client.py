@@ -22,9 +22,6 @@ class OllamaClient:
 
     def chat(self, messages: List[Dict[str, str]], model: str = None, functions: Optional[List[Dict[str, Any]]] = None) -> Any:
         use_model = model or self.model
-        if not OPENAI_AVAILABLE or not self.client:
-            raise Exception("OpenAI client not initialized")
-        
         try:
             if functions:
                 print(f"[openai] Calling {use_model} with function: {functions[0]['name']}")
